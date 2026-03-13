@@ -1,4 +1,5 @@
 import { execFile as nodeExecFile } from "node:child_process";
+import { promisify } from "node:util";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Liquid } from "liquidjs";
@@ -10,6 +11,8 @@ import errs from "./error.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+const nodeExecFilePromises = promisify(nodeExecFile);
 
 const writeHash = () => {
 	const envVars = fs.readdirSync(`${__dirname}/../templates`).flatMap((file) => {
@@ -31,18 +34,18 @@ const writeHash = () => {
  * @param   {Array}  args
  * @returns {Promise}
  */
-const execFile = (cmd, args) => {
+const execFile = async (cmd, args) => {
 	debug(logger, `CMD: ${cmd} ${args ? args.join(" ") : ""}`);
 
-	return new Promise((resolve, reject) => {
-		nodeExecFile(cmd, args, (err, stdout, stderr) => {
-			if (err && typeof err === "object") {
-				reject(new errs.CommandError((stdout + stderr).trim(), 1, err));
-			} else {
-				resolve((stdout + stderr).trim());
-			}
-		});
-	});
+	try {
+		const { stdout, stderr } = await nodeExecFilePromises(cmd, args);
+		return `${stdout || ""}${stderr || ""}`.trim();
+	} catch (err) {
+		if (err && typeof err === "object") {
+			throw new errs.CommandError(`${err.stdout || ""}${err.stderr || ""}`.trim(), 1, err);
+		}
+		throw err;
+	}
 };
 
 /**

@@ -18,22 +18,11 @@ router
 	/**
 	 * GET /schema
 	 */
-	.get(async (req, res) => {
+	.get(async (req, res, next) => {
 		try {
 			const swaggerJSON = await getCompiledSchema();
-
-			let proto = req.protocol;
-			if (typeof req.headers["x-forwarded-proto"] !== "undefined" && req.headers["x-forwarded-proto"]) {
-				proto = req.headers["x-forwarded-proto"];
-			}
-
-			let origin = `${proto}://${req.hostname}`;
-			if (typeof req.headers.origin !== "undefined" && req.headers.origin) {
-				origin = req.headers.origin;
-			}
-
 			swaggerJSON.info.version = PACKAGE.version;
-			swaggerJSON.servers[0].url = `${origin}/api`;
+			swaggerJSON.servers[0].url = `${req.protocol}://${req.get("host")}/api`;
 			res.status(200).send(swaggerJSON);
 		} catch (err) {
 			debug(logger, `${req.method.toUpperCase()} ${req.originalUrl}: ${err}`);

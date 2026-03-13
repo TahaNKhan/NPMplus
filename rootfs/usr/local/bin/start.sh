@@ -116,6 +116,7 @@ mkdir -vp /data/npmplus/gravatar \
           /data/tls/custom \
           /data/html \
           /data/access \
+          /data/anubis \
           /data/crowdsec \
           /data/nginx/redirection_host \
           /data/nginx/proxy_host \
@@ -229,6 +230,9 @@ rm -vrf /data/letsencrypt-acme-challenge \
         /data/logs
 
 touch /data/html/index.html \
+      /data/anubis/happy.webp \
+      /data/anubis/reject.webp \
+      /data/anubis/pensive.webp \
       /data/custom_nginx/events.conf \
       /data/custom_nginx/http.conf \
       /data/custom_nginx/http_top.conf \
@@ -336,7 +340,7 @@ fi
 if [ "$DEFAULT_CERT" = "/data/tls/dummycert.pem" ] || [ "$DEFAULT_KEY" = "/data/tls/dummykey.pem" ]; then
     if [ ! -s /data/tls/dummycert.pem ] || [ ! -s /data/tls/dummykey.pem ]; then
         rm -vrf /data/tls/dummycert.pem /data/tls/dummykey.pem
-        openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:secp384r1 -days 365000 -nodes -x509 -subj '/CN=*' -sha512 -keyout /data/tls/dummykey.pem -out /data/tls/dummycert.pem
+        openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:secp384r1 -x509 -days 365000 -nodes -subj '/CN=*' -sha512 -keyout /data/tls/dummykey.pem -out /data/tls/dummycert.pem
     fi
     unset DEFAULT_STAPLING_FILE
 else
@@ -348,6 +352,7 @@ sed -i "s|ssl_certificate_key .*|ssl_certificate_key $DEFAULT_KEY;|g" /app/templ
 if [ -s "$DEFAULT_STAPLING_FILE" ]; then
     sed -i "s|#\?ssl_stapling|ssl_stapling|g" /app/templates/default.conf
     sed -i "s|#\?ssl_stapling_file .*|ssl_stapling_file $DEFAULT_STAPLING_FILE;|g" /app/templates/default.conf
+    sed -i "s|#\?ssl_certificate_compression|ssl_certificate_compression|g" /app/templates/default.conf
 fi
 
 sed -i "s|ssl_certificate .*|ssl_certificate $DEFAULT_CERT;|g" /usr/local/nginx/conf/conf.d/npmplus.conf
@@ -355,6 +360,7 @@ sed -i "s|ssl_certificate_key .*|ssl_certificate_key $DEFAULT_KEY;|g" /usr/local
 if [ -s "$DEFAULT_STAPLING_FILE" ]; then
     sed -i "s|#\?ssl_stapling|ssl_stapling|g" /usr/local/nginx/conf/conf.d/npmplus.conf
     sed -i "s|#\?ssl_stapling_file .*|ssl_stapling_file $DEFAULT_STAPLING_FILE;|g" /usr/local/nginx/conf/conf.d/npmplus.conf
+    sed -i "s|#\?ssl_certificate_compression|ssl_certificate_compression|g" /usr/local/nginx/conf/conf.d/npmplus.conf
 fi
 
 sed -i "s|ssl_certificate .*|ssl_certificate $DEFAULT_CERT;|g" /usr/local/nginx/conf/conf.d/goaccess.conf.disabled
@@ -362,6 +368,7 @@ sed -i "s|ssl_certificate_key .*|ssl_certificate_key $DEFAULT_KEY;|g" /usr/local
 if [ -s "$DEFAULT_STAPLING_FILE" ]; then
     sed -i "s|#\?ssl_stapling|ssl_stapling|g" /usr/local/nginx/conf/conf.d/goaccess.conf.disabled
     sed -i "s|#\?ssl_stapling_file .*|ssl_stapling_file $DEFAULT_STAPLING_FILE;|g" /usr/local/nginx/conf/conf.d/goaccess.conf.disabled
+    sed -i "s|#\?ssl_certificate_compression|ssl_certificate_compression|g" /usr/local/nginx/conf/conf.d/goaccess.conf.disabled
 fi
 
 sed -i "s|#\?listen 0.0.0.0:81 |listen $NPM_IPV4_BINDING:$NPM_PORT |g" /usr/local/nginx/conf/conf.d/npmplus.conf
@@ -381,7 +388,7 @@ if [ "$GOA" = "true" ]; then
     cp -van /usr/local/nginx/conf/conf.d/goaccess.conf.disabled /usr/local/nginx/conf/conf.d/goaccess.conf
 fi
 
-if [ "$LISTEN_PROXY_PROTOCOL" = "true" ]; then
+if [ "$LISTEN_PROXY_PROTOCOL_HTTP" = "true" ] || [ "$LISTEN_PROXY_PROTOCOL_HTTPS" = "true" ]; then
   sed -i "s|real_ip_header.*|real_ip_header proxy_protocol;|g" /usr/local/nginx/conf/nginx.conf
 fi
 if [ "$NGINX_QUIC_BPF" = "true" ]; then
@@ -394,7 +401,7 @@ if [ "$NGINX_WORKER_PROCESSES" != "auto" ]; then
     sed -i "s|worker_processes.*|worker_processes $NGINX_WORKER_PROCESSES;|g" /usr/local/nginx/conf/nginx.conf
 fi
 if [ "$NGINX_FORCE_X25519MLKEM768" = "true" ]; then
-    sed -i "s|X25519MLKEM768:x25519;|X25519MLKEM768;|g" /usr/local/nginx/conf/nginx.conf
+    sed -i "s|X25519MLKEM768:x25519:secp521r1:secp384r1:prime256v1;|X25519MLKEM768;|g" /usr/local/nginx/conf/nginx.conf
 fi
 if [ "$NGINX_WORKER_CONNECTIONS" != "512" ]; then
     sed -i "s|#worker_connections;|worker_connections $NGINX_WORKER_CONNECTIONS;|g" /usr/local/nginx/conf/nginx.conf
@@ -402,8 +409,8 @@ fi
 if [ "$NGINX_DISABLE_TLS12" = "true" ]; then
     sed -i "s|ssl_protocols TLSv1.2|ssl_protocols|g" /usr/local/nginx/conf/nginx.conf
 fi
-if [ "$NGINX_TRUST_SECPR1" = "true" ]; then
-    sed -i "s|X25519MLKEM768:x25519;|X25519MLKEM768:x25519:secp521r1:secp384r1:secp256r1;|g" /usr/local/nginx/conf/nginx.conf
+if [ "$NGINX_TRUST_SECPR1" = "false" ]; then
+    sed -i "s|X25519MLKEM768:x25519:secp521r1:secp384r1:prime256v1;|X25519MLKEM768:x25519;|g" /usr/local/nginx/conf/nginx.conf
 fi
 
 if [ "$NGINX_LOAD_OPENAPPSEC_ATTACHMENT_MODULE" = "true" ]; then

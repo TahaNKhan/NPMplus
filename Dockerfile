@@ -1,24 +1,25 @@
-# syntax=docker/dockerfile:labs
-FROM alpine:3.23.3 AS nginx
+# syntax=docker/dockerfile:1.22.0@sha256:4a43a54dd1fedceb30ba47e76cfcf2b47304f4161c0caeac2db1c61804ea3c91
+FROM alpine:3.23.3@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659 AS nginx
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
 ARG LUAJIT_INC=/usr/include/luajit-2.1
 ARG LUAJIT_LIB=/usr/lib
 
-ARG NGINX_VER=release-1.29.5
+ARG NGINX_VER=release-1.29.6
 ARG DTR_VER=1.29.2
-ARG RCP_VER=1.29.4
+ARG RCP_VER=1.29.5
+ARG ZNP_VER=1.26.3
 
 ARG NB_VER=master
 ARG NUB_VER=main
 ARG ZNM_VER=master
 ARG NHUZFM_VER=main
-ARG NF_VER=master
+ARG NF_VER=v0.6.0
 ARG HMNM_VER=v0.39
 ARG NDK_VER=v0.3.4
 ARG LNM_VER=v0.10.29R2
 
-ARG NJS_VER=0.9.5
+ARG NJS_VER=0.9.6
 ARG NAL_VER=master
 ARG VTS_VER=v0.2.5
 ARG NNTLM_VER=master
@@ -26,21 +27,17 @@ ARG NHG2M_VER=3.4
 
 ARG FLAGS
 ARG CC=clang
-ARG CFLAGS="$FLAGS -m64 -O3 -pipe -flto=thin -fstack-clash-protection -fstack-protector-strong -ftrivial-auto-var-init=zero -fno-delete-null-pointer-checks -fno-strict-overflow -fno-strict-aliasing -fno-plt -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -Wformat=2 -Werror=format-security -Wno-sign-compare"
+ARG CFLAGS="$FLAGS -m64 -O3 -pipe -flto=full -fstack-clash-protection -fstack-protector-strong -ftrivial-auto-var-init=zero -fno-delete-null-pointer-checks -fno-strict-overflow -fno-strict-aliasing -fno-plt -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -Wformat=2 -Werror=format-security -Wno-sign-compare"
 ARG CXX=clang++
-ARG CXXFLAGS="$FLAGS -m64 -O3 -pipe -flto=thin -fstack-clash-protection -fstack-protector-strong -ftrivial-auto-var-init=zero -fno-delete-null-pointer-checks -fno-strict-overflow -fno-strict-aliasing -fno-plt -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -D_GLIBCXX_ASSERTIONS -D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS=1 -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST -Wformat=2 -Werror=format-security -Wno-sign-compare"
-ARG LDFLAGS="-fuse-ld=lld -m64 -Wl,-s -Wl,-O1 -Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now -Wl,--sort-common -Wl,--as-needed -Wl,-z,pack-relative-relocs"
+ARG CXXFLAGS="$FLAGS -m64 -O3 -pipe -flto=full -fstack-clash-protection -fstack-protector-strong -ftrivial-auto-var-init=zero -fno-delete-null-pointer-checks -fno-strict-overflow -fno-strict-aliasing -fno-plt -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -D_GLIBCXX_ASSERTIONS -D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS=1 -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST -Wformat=2 -Werror=format-security -Wno-sign-compare"
+ARG LDFLAGS="-fuse-ld=lld -m64 -Wl,-s -Wl,-O2 -Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now -Wl,--sort-common -Wl,--as-needed -Wl,-z,pack-relative-relocs"
 
-COPY nginx/nginx.patch /src/nginx.patch
-COPY nginx/ngx_brotli.patch /src/ngx_brotli.patch
-COPY nginx/ngx_unbrotli.patch /src/ngx_unbrotli.patch
-COPY nginx/zstd-nginx-module.patch /src/zstd-nginx-module.patch
-#COPY nginx/lua-nginx-module.patch /src/lua-nginx-module.patch
-COPY nginx/attachment.patch /src/attachment.patch
+WORKDIR /src
+COPY patches/*.patch /src
 
 RUN apk upgrade --no-cache -a && \
-    apk add --no-cache ca-certificates build-base clang lld cmake ninja git \
-                       linux-headers libatomic_ops-dev openssl-dev pcre2-dev luajit-dev zlib-ng-dev brotli-dev zstd-dev libxslt-dev openldap-dev quickjs-ng-dev libmaxminddb-dev
+    apk add --no-cache git make clang lld cmake ninja file \
+                       linux-headers libatomic_ops-dev aws-lc aws-lc-dev pcre2-dev luajit-dev zlib-ng-dev brotli-dev zstd-dev libxslt-dev openldap-dev quickjs-ng-dev libmaxminddb-dev clang-dev
 
 RUN git clone --depth 1 https://github.com/nginx/nginx --branch "$NGINX_VER" /src/nginx && \
     cd /src/nginx && \
@@ -50,7 +47,7 @@ RUN git clone --depth 1 https://github.com/nginx/nginx --branch "$NGINX_VER" /sr
     git apply /src/nginx/2.patch && \
     wget -q https://patch-diff.githubusercontent.com/raw/nginx/nginx/pull/689.patch -O /src/nginx/3.patch && \
     git apply /src/nginx/3.patch && \
-    wget -q https://raw.githubusercontent.com/zlib-ng/patches/refs/heads/master/nginx/1.26.3-zlib-ng.patch -O /src/nginx/4.patch && \
+    wget -q https://raw.githubusercontent.com/zlib-ng/patches/refs/heads/master/nginx/"$ZNP_VER"-zlib-ng.patch -O /src/nginx/4.patch && \
     git apply /src/nginx/4.patch && \
     git apply /src/nginx.patch && \
     \
@@ -68,12 +65,12 @@ RUN git clone --depth 1 https://github.com/nginx/nginx --branch "$NGINX_VER" /sr
     git apply /src/zstd-nginx-module/1.patch && \
     git apply /src/zstd-nginx-module/2.patch && \
     git clone --depth 1 https://github.com/HanadaLee/ngx_http_unzstd_filter_module --branch "$NHUZFM_VER" /src/ngx_http_unzstd_filter_module && \
-    git clone --depth 1 https://github.com/Zoey2936/ngx-fancyindex --branch "$NF_VER" /src/ngx-fancyindex && \
+    git clone --depth 1 https://github.com/aperezdc/ngx-fancyindex --branch "$NF_VER" /src/ngx-fancyindex && \
     git clone --depth 1 https://github.com/openresty/headers-more-nginx-module --branch "$HMNM_VER" /src/headers-more-nginx-module && \
     git clone --depth 1 https://github.com/vision5/ngx_devel_kit --branch "$NDK_VER" /src/ngx_devel_kit && \
     git clone --depth 1 https://github.com/openresty/lua-nginx-module --branch "$LNM_VER" /src/lua-nginx-module && \
-#    cd /src/lua-nginx-module && \
-#    git apply /src/lua-nginx-module.patch && \
+    cd /src/lua-nginx-module && \
+    git apply /src/lua-nginx-module.patch && \
     \
     git clone --depth 1 https://github.com/nginx/njs --branch "$NJS_VER" /src/njs && \
     git clone --depth 1 https://github.com/kvspb/nginx-auth-ldap --branch "$NAL_VER" /src/nginx-auth-ldap && \
@@ -145,7 +142,7 @@ RUN find /usr/local/nginx/modules -name "*.so" -exec strip -s {} \; && \
     /usr/local/nginx/sbin/nginx -V
 
 
-FROM --platform="$BUILDPLATFORM" alpine:3.23.3 AS frontend
+FROM --platform="$BUILDPLATFORM" alpine:3.23.3@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659 AS frontend
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ARG NODE_ENV=production
 COPY frontend /app
@@ -157,7 +154,7 @@ RUN apk upgrade --no-cache -a && \
     pnpm tsc && \
     pnpm vite build
 
-FROM alpine:3.23.3 AS backend
+FROM alpine:3.23.3@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659 AS backend
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ARG NODE_ENV=production
 COPY backend /app
@@ -172,7 +169,7 @@ RUN apk upgrade --no-cache -a && \
     find /app/node_modules -name "*.node" -type f -exec file {} \;
 
 
-FROM alpine:3.23.3
+FROM alpine:3.23.3@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ENV NODE_ENV=production
 ARG LRC_VER=v0.1.32R1
@@ -193,7 +190,7 @@ COPY COPYING /COPYING
 WORKDIR /app
 RUN apk upgrade --no-cache -a && \
     apk add --no-cache tzdata tini \
-                       libssl3 libcrypto3 pcre2 luajit zlib-ng brotli zstd lua5.1-cjson libxml2 libldap quickjs-ng-libs libmaxminddb-libs \
+                       aws-lc pcre2 luajit zlib-ng brotli zstd lua5.1-cjson libxml2 libldap quickjs-ng-libs libmaxminddb-libs \
                        curl coreutils findutils grep jq openssl shadow su-exec util-linux-misc \
                        bash bash-completion nano \
                        logrotate goaccess fcgi \

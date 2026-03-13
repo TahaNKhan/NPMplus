@@ -1,10 +1,12 @@
+import { createPrivateKey, X509Certificate } from "node:crypto";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { domainToASCII } from "node:url";
 import archiver from "archiver";
+import dayjs from "dayjs";
 import _ from "lodash";
-import moment from "moment";
-import tempWrite from "temp-write";
 import dnsPlugins from "../certbot/dns-plugins.json" with { type: "json" };
 import { installPlugin } from "../lib/certbot.js";
 import error from "../lib/error.js";
@@ -85,7 +87,7 @@ const internalCertificate = {
 							.where("id", certificate.id)
 							.andWhere("provider", "letsencrypt")
 							.patch({
-								expires_on: moment(certInfo.dates.to, "X").format("YYYY-MM-DD HH:mm:ss"),
+								expires_on: dayjs.unix(certInfo.dates.to).format("YYYY-MM-DD HH:mm:ss"),
 							});
 					} catch (err) {
 						// Don't want to stop the train here, just log the error
@@ -137,7 +139,7 @@ const internalCertificate = {
 					const savedRow = await certificateModel
 						.query()
 						.patchAndFetchById(certificate.id, {
-							expires_on: moment(certInfo.dates.to, "X").format("YYYY-MM-DD HH:mm:ss"),
+							expires_on: dayjs.unix(certInfo.dates.to).format("YYYY-MM-DD HH:mm:ss"),
 						})
 						.then(utils.omitRow(omissions()));
 
@@ -361,8 +363,8 @@ const internalCertificate = {
 			// Revoke the cert
 			await internalCertificate.revokeCertbot(row);
 		} else {
-			fs.rmSync(`/data/tls/custom/npm-${row.id}`, { force: true, recursive: true });
-			fs.rmSync(`/data/tls/custom/npm-${row.id}.der`, { force: true });
+			await rm(`/data/tls/custom/npm-${row.id}`, { force: true, recursive: true });
+			await rm(`/data/tls/custom/npm-${row.id}.der`, { force: true });
 		}
 		return true;
 	},
@@ -430,43 +432,17 @@ const internalCertificate = {
 	 * @returns {Promise}
 	 */
 	writeCustomCert: async (certificate) => {
+		if (certificate.provider === "letsencrypt") {
+			throw new Error("Refusing to write certbot certs here");
+		}
+
 		logger.info("Writing Custom Certificate:", certificate.id);
 
 		const dir = `/data/tls/custom/npm-${certificate.id}`;
 
-		return new Promise((resolve, reject) => {
-			if (certificate.provider === "letsencrypt") {
-				reject(new Error("Refusing to write certbot certs here"));
-				return;
-			}
-
-			try {
-				if (!fs.existsSync(dir)) {
-					fs.mkdirSync(dir);
-				}
-			} catch (err) {
-				reject(err);
-				return;
-			}
-
-			fs.writeFile(`${dir}/fullchain.pem`, certificate.meta.certificate, (err) => {
-				if (err) {
-					reject(err);
-				} else {
-					resolve();
-				}
-			});
-		}).then(() => {
-			return new Promise((resolve, reject) => {
-				fs.writeFile(`${dir}/privkey.pem`, certificate.meta.certificate_key, (err) => {
-					if (err) {
-						reject(err);
-					} else {
-						resolve();
-					}
-				});
-			});
-		});
+		await mkdir(dir, { recursive: true });
+		await writeFile(`${dir}/fullchain.pem`, certificate.meta.certificate);
+		await writeFile(`${dir}/privkey.pem`, certificate.meta.certificate_key);
 	},
 
 	/**
@@ -491,40 +467,22 @@ const internalCertificate = {
 	 * @param   {Object}  data.files
 	 * @returns {Promise}
 	 */
-	validate: (data) => {
-		// Put file contents into an object
-		const files = {};
-		_.map(data.files, (file, name) => {
-			if (internalCertificate.allowedSslFiles.indexOf(name) !== -1) {
-				files[name] = file.data.toString();
+	validate: async (data) => {
+		const finalData = {};
+		for (const [name, file] of Object.entries(data.files)) {
+			if (internalCertificate.allowedSslFiles.includes(name)) {
+				const content = file.data.toString();
+				let res;
+				if (name === "certificate_key") {
+					res = await internalCertificate.checkPrivateKey(content);
+				} else {
+					res = await internalCertificate.getCertificateInfo(content, true);
+				}
+				finalData[name] = res;
 			}
-		});
+		}
 
-		// For each file, create a temp file and write the contents to it
-		// Then test it depending on the file type
-		const promises = [];
-		_.map(files, (content, type) => {
-			promises.push(
-				new Promise((resolve) => {
-					if (type === "certificate_key") {
-						resolve(internalCertificate.checkPrivateKey(content));
-					} else {
-						// this should handle `certificate` and intermediate certificate
-						resolve(internalCertificate.getCertificateInfo(content, true));
-					}
-				}).then((res) => {
-					return { [type]: res };
-				}),
-			);
-		});
-
-		return Promise.all(promises).then((files) => {
-			let data = {};
-			_.each(files, (file) => {
-				data = _.assign({}, data, file);
-			});
-			return data;
-		});
+		return finalData;
 	},
 
 	/**
@@ -554,8 +512,8 @@ const internalCertificate = {
 
 		const certificate = await internalCertificate.update(access, {
 			id: data.id,
-			expires_on: moment(validations.certificate.dates.to, "X").format("YYYY-MM-DD HH:mm:ss"),
-			domain_names: [validations.certificate.cn],
+			expires_on: dayjs.unix(validations.certificate.dates.to).format("YYYY-MM-DD HH:mm:ss"),
+			domain_names: validations.certificate.cn,
 			meta: _.clone(row.meta), // Prevent the update method from changing this value that we'll use later
 		});
 
@@ -571,24 +529,10 @@ const internalCertificate = {
 	 * @param {String}  privateKey    This is the entire key contents as a string
 	 */
 	checkPrivateKey: async (privateKey) => {
-		const filepath = await tempWrite(privateKey);
-		const failTimeout = setTimeout(() => {
-			throw new error.ValidationError(
-				"Result Validation Error: Validation timed out. This could be due to the key being passphrase-protected.",
-			);
-		}, 10000);
-
 		try {
-			const result = await utils.execFile("openssl", ["pkey", "-in", filepath, "-check", "-noout"]);
-			clearTimeout(failTimeout);
-			if (!result.toLowerCase().includes("key is valid")) {
-				throw new error.ValidationError(`Result Validation Error: ${result}`);
-			}
-			fs.unlinkSync(filepath);
+			createPrivateKey(privateKey);
 			return true;
 		} catch (err) {
-			clearTimeout(failTimeout);
-			fs.unlinkSync(filepath);
 			throw new error.ValidationError(`Certificate Key is not valid (${err.message})`, err);
 		}
 	},
@@ -601,77 +545,38 @@ const internalCertificate = {
 	 * @param {Boolean} [throwExpired]  Throw when the certificate is out of date
 	 */
 	getCertificateInfo: async (certificate, throwExpired) => {
-		const filepath = await tempWrite(certificate);
-		try {
-			const certData = await internalCertificate.getCertificateInfoFromFile(filepath, throwExpired);
-			fs.unlinkSync(filepath);
-			return certData;
-		} catch (err) {
-			fs.unlinkSync(filepath);
-			throw err;
-		}
-	},
-
-	/**
-	 * Uses the openssl command to both validate and get info out of the certificate.
-	 * It will save the file to disk first, then run commands on it, then delete the file.
-	 *
-	 * @param {String}  certificateFile The file location on disk
-	 * @param {Boolean} [throw_expired]  Throw when the certificate is out of date
-	 */
-	getCertificateInfoFromFile: async (certificateFile, throw_expired) => {
 		const certData = {};
 
 		try {
-			const result = await utils.execFile("openssl", ["x509", "-in", certificateFile, "-subject", "-noout"]);
-			// Examples:
-			// subject=CN = *.jc21.com
-			// subject=CN = something.example.com
-			const regex = /(?:subject=)?[^=]+=\s*(\S+)/gim;
-			const match = regex.exec(result);
-			if (match && typeof match[1] !== "undefined") {
-				certData.cn = match[1];
-			}
+			const cert = new X509Certificate(certificate);
 
-			const result2 = await utils.execFile("openssl", ["x509", "-in", certificateFile, "-issuer", "-noout"]);
-			// Examples:
-			// issuer=C = US, O = Let's Encrypt, CN = Let's Encrypt Authority X3
-			// issuer=C = US, O = Let's Encrypt, CN = E5
-			// issuer=O = NginxProxyManager, CN = NginxProxyManager Intermediate CA","O = NginxProxyManager, CN = NginxProxyManager Intermediate CA
-			const regex2 = /^(?:issuer=)?(.*)$/gim;
-			const match2 = regex2.exec(result2);
-			if (match2 && typeof match2[1] !== "undefined") {
-				certData.issuer = match2[1];
-			}
-
-			const result3 = await utils.execFile("openssl", ["x509", "-in", certificateFile, "-dates", "-noout"]);
-			// notBefore=Jul 14 04:04:29 2018 GMT
-			// notAfter=Oct 12 04:04:29 2018 GMT
-			let validFrom = null;
-			let validTo = null;
-
-			const lines = result3.split("\n");
-			lines.map((str) => {
-				const regex = /^(\S+)=(.*)$/gim;
-				const match = regex.exec(str.trim());
-
-				if (match && typeof match[2] !== "undefined") {
-					const date = Number.parseInt(moment(match[2], "MMM DD HH:mm:ss YYYY z").format("X"), 10);
-
-					if (match[1].toLowerCase() === "notbefore") {
-						validFrom = date;
-					} else if (match[1].toLowerCase() === "notafter") {
-						validTo = date;
-					}
+			if (cert.subjectAltName) {
+				certData.cn = cert.subjectAltName.split(", ").map((entry) => {
+					const firstColonIdx = entry.indexOf(":");
+					return firstColonIdx === -1 ? entry.trim() : entry.substring(firstColonIdx + 1).trim();
+				});
+			} else {
+				const cnMatch = /\bCN=([^\n]+)/i.exec(cert.subject);
+				if (cnMatch?.[1]) {
+					certData.cn = [cnMatch[1].trim()];
+				} else {
+					certData.cn = [];
 				}
-				return true;
-			});
-
-			if (!validFrom || !validTo) {
-				throw new error.ValidationError(`Could not determine dates from certificate: ${result}`);
 			}
 
-			if (throw_expired && validTo < Number.parseInt(moment().format("X"), 10)) {
+			if (cert.issuer) {
+				certData.issuer = cert.issuer.replace(/\n/g, ", ");
+			}
+
+			const validFrom = Math.floor(new Date(cert.validFrom).getTime() / 1000);
+			const validTo = Math.floor(new Date(cert.validTo).getTime() / 1000);
+
+			if (Number.isNaN(validFrom) || Number.isNaN(validTo)) {
+				throw new error.ValidationError("Could not determine dates from certificate");
+			}
+
+			const now = Math.floor(Date.now() / 1000);
+			if (throwExpired && validTo < now) {
 				throw new error.ValidationError("Certificate has expired");
 			}
 
@@ -684,6 +589,18 @@ const internalCertificate = {
 		} catch (err) {
 			throw new error.ValidationError(`Certificate is not valid (${err.message})`, err);
 		}
+	},
+
+	/**
+	 * Uses the openssl command to both validate and get info out of the certificate.
+	 * It will save the file to disk first, then run commands on it, then delete the file.
+	 *
+	 * @param {String}  certificateFile The file location on disk
+	 * @param {Boolean} [throwExpired]  Throw when the certificate is out of date
+	 */
+	getCertificateInfoFromFile: async (certificateFile, throwExpired) => {
+		const certContent = await readFile(certificateFile);
+		return internalCertificate.getCertificateInfo(certContent, throwExpired);
 	},
 
 	/**
@@ -718,6 +635,10 @@ const internalCertificate = {
 			`Requesting Certbot certificates for Cert #${certificate.id}: ${certificate.domain_names.join(", ")}`,
 		);
 
+		certificate.domain_names = certificate.domain_names.map((v) => v.replace(/^\[|\]$/g, ""));
+		const ips = certificate.domain_names.filter((entry) => net.isIP(entry) !== 0);
+		const domains = certificate.domain_names.filter((entry) => net.isIP(entry) === 0);
+
 		const result = await utils.execFile("certbot", [
 			"--config",
 			"/etc/certbot.ini",
@@ -726,8 +647,8 @@ const internalCertificate = {
 			process.env.ACME_SERVER,
 			"--cert-name",
 			`npm-${certificate.id}`,
-			"--domains",
-			certificate.domain_names.map((domain_name) => domainToASCII(domain_name)).join(","),
+			...(domains.length > 0 ? ["--domains", domains.map((domain) => domainToASCII(domain)).join(",")] : []),
+			...ips.flatMap((ip) => ["--ip-address", ip]),
 			...(certificate.meta.reuse_key ? ["--reuse-key"] : ["--no-reuse-key"]),
 			"--authenticator",
 			"webroot",
@@ -752,7 +673,7 @@ const internalCertificate = {
 		);
 
 		const credentialsLocation = `/tmp/certbot-credentials/credentials-${certificate.id}`;
-		fs.writeFileSync(credentialsLocation, certificate.meta.dns_provider_credentials, { mode: 0o600 });
+		await writeFile(credentialsLocation, certificate.meta.dns_provider_credentials, { mode: 0o600 });
 
 		try {
 			const result = await utils.execFile("certbot", [
@@ -778,8 +699,7 @@ const internalCertificate = {
 			logger.info(result);
 			return result;
 		} catch (err) {
-			// Don't fail if file does not exist, so no need for action in the callback
-			fs.unlink(credentialsLocation, () => {});
+			await rm(credentialsLocation, { force: true });
 			throw err;
 		}
 	},
@@ -805,7 +725,7 @@ const internalCertificate = {
 			);
 
 			const updatedCertificate = await certificateModel.query().patchAndFetchById(certificate.id, {
-				expires_on: moment(certInfo.dates.to, "X").format("YYYY-MM-DD HH:mm:ss"),
+				expires_on: dayjs.unix(certInfo.dates.to).format("YYYY-MM-DD HH:mm:ss"),
 			});
 
 			// Add to audit log
@@ -929,7 +849,7 @@ const internalCertificate = {
 				"unspecified",
 				"--delete-after-revoke",
 			]);
-			fs.rmSync(`/data/tls/certbot/live/npm-${certificate.id}.der`, { force: true });
+			await rm(`/data/tls/certbot/live/npm-${certificate.id}.der`, { force: true });
 			logger.info(result);
 			return result;
 		} catch (err) {
@@ -953,7 +873,7 @@ const internalCertificate = {
 		const testChallengeDir = "/data/tls/certbot/acme-challenge/.well-known/acme-challenge";
 		const testChallengeFile = `${testChallengeDir}/test-challenge`;
 		fs.mkdirSync(testChallengeDir, { recursive: true });
-		fs.writeFileSync(testChallengeFile, "Success", { encoding: "utf8" });
+		await writeFile(testChallengeFile, "Success", { encoding: "utf8" });
 
 		const results = [];
 
@@ -965,7 +885,7 @@ const internalCertificate = {
 		}
 
 		// Remove the test challenge file
-		fs.unlinkSync(testChallengeFile);
+		await rm(testChallengeFile, { force: true });
 
 		return results;
 	},
