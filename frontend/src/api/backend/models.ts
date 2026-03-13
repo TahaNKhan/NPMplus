@@ -228,3 +228,9 @@ export interface DNSProvider {
 	name: string;
 	credentials: string;
 }
+
+export interface DnsCredential {
+	id: number;
+	provider_id: string;
+	credentials: string;
+}
