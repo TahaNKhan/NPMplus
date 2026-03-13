@@ -4,12 +4,18 @@ import { Field, useFormikContext } from "formik";
 import { useState } from "react";
 import Select, { type ActionMeta } from "react-select";
 import type { DNSProvider } from "src/api/backend";
-import { useDnsProviders } from "src/hooks";
+import { useDnsCredentials, useDnsProviders } from "src/hooks";
 import { intl, T } from "src/locale";
 import styles from "./DNSProviderFields.module.css";
 
 interface DNSProviderOption {
 	readonly value: string;
+	readonly label: string;
+	readonly credentials: string;
+}
+
+interface SavedCredentialOption {
+	readonly value: number;
 	readonly label: string;
 	readonly credentials: string;
 }
@@ -20,6 +26,7 @@ interface Props {
 export function DNSProviderFields({ showBoundaryBox = false }: Props) {
 	const { values, setFieldValue } = useFormikContext();
 	const { data: dnsProviders, isLoading } = useDnsProviders();
+	const { data: savedCredentials } = useDnsCredentials();
 	const [dnsProviderId, setDnsProviderId] = useState<string | null>(null);
 
 	const v: any = values || {};
@@ -30,12 +37,30 @@ export function DNSProviderFields({ showBoundaryBox = false }: Props) {
 		setDnsProviderId(newValue?.value);
 	};
 
+	const handleSavedCredentialChange = (newValue: any, _actionMeta: ActionMeta<SavedCredentialOption>) => {
+		if (newValue) {
+			setFieldValue("meta.dnsProviderCredentials", newValue.credentials);
+		}
+	};
+
 	const options: DNSProviderOption[] =
 		dnsProviders?.map((p: DNSProvider) => ({
 			value: p.id,
 			label: p.name,
 			credentials: p.credentials,
 		})) || [];
+
+	// Filter saved credentials by the selected DNS provider
+	const savedCredentialOptions: SavedCredentialOption[] =
+		savedCredentials
+			?.filter((cred) => cred.provider_id === dnsProviderId)
+			.map((cred) => ({
+				value: cred.id,
+				label: `Saved Credential #${cred.id}`,
+				credentials: cred.credentials,
+			})) || [];
+
+	const showSavedCredentialsDropdown = dnsProviderId && savedCredentialOptions.length > 0;
 
 	return (
 		<div className={showBoundaryBox ? styles.dnsChallengeWarning : undefined}>
@@ -69,6 +94,27 @@ export function DNSProviderFields({ showBoundaryBox = false }: Props) {
 
 			{dnsProviderId ? (
 				<>
+					{showSavedCredentialsDropdown && (
+						<div className="mt-3">
+							<label htmlFor="savedCredential" className="form-label">
+								<T id="certificates.dns.saved-credentials" />
+							</label>
+							<Select
+								className="react-select-container"
+								classNamePrefix="react-select"
+								id="savedCredential"
+								closeMenuOnSelect={true}
+								isClearable={true}
+								placeholder={intl.formatMessage({ id: "certificates.dns.saved-credentials.placeholder" })}
+								isSearchable={false}
+								onChange={handleSavedCredentialChange}
+								options={savedCredentialOptions}
+							/>
+							<small className="text-muted">
+								<T id="certificates.dns.saved-credentials-note" />
+							</small>
+						</div>
+					)}
 					<Field name="meta.dnsProviderCredentials">
 						{({ field }: any) => (
 							<div className="mt-3">
