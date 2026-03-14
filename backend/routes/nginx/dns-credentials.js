@@ -54,12 +54,17 @@ router
 							type: "string",
 							minLength: 1,
 						},
+						name: {
+							type: "string",
+							minLength: 1
+						}
 					},
-					required: ["provider_id", "credentials"],
+					required: ["provider_id", "credentials", "name"],
 				},
 				{
 					provider_id: req.body.provider_id,
 					credentials: req.body.credentials,
+					name: req.body.name
 				},
 			);
 			const result = await internalDnsCredentials.create(res.locals.access, payload);
@@ -136,12 +141,17 @@ router
 							type: "string",
 							minLength: 1,
 						},
+						name: {
+							type: "string",
+							minLength: 1,
+						},
 					},
 				},
 				{
 					credential_id: req.params.credential_id,
 					provider_id: req.body.provider_id,
 					credentials: req.body.credentials,
+					name: req.body.name
 				},
 			);
 			payload.id = Number.parseInt(payload.credential_id, 10);

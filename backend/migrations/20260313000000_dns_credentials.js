@@ -19,6 +19,7 @@ const up = (knex) => {
 			table.dateTime("created_on").notNull();
 			table.dateTime("modified_on").notNull();
 			table.integer("owner_user_id").notNull().unsigned();
+			table.string("name").notNull();
 			table.string("provider_id").notNull();
 			table.text("credentials").notNull();
 			table.integer("is_deleted").notNull().unsigned().defaultTo(0);

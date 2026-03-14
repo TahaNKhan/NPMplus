@@ -13,6 +13,7 @@ export default function DnsCredentials() {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [selectedProvider, setSelectedProvider] = useState<string>("");
 	const [credentials, setCredentials] = useState("");
+	const [name, setName] = useState("");
 
 	const { data: dnsProviders, isLoading: providersLoading } = useDnsProviders();
 	const { data: savedCredentials, isLoading: credentialsLoading } = useDnsCredentials();
@@ -23,13 +24,14 @@ export default function DnsCredentials() {
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
-		if (!selectedProvider || !credentials) return;
+		if (!selectedProvider || !credentials || !name) return;
 
 		setIsSubmitting(true);
 		try {
 			await createDnsCredential({
 				provider_id: selectedProvider,
 				credentials,
+				name
 			});
 			queryClient.invalidateQueries({ queryKey: ["dns-credentials"] });
 			showObjectSuccess("dns-credentials", "saved");
@@ -87,6 +89,21 @@ export default function DnsCredentials() {
 					</div>
 				</div>
 
+				<div className="col-md-6">
+					<div className="mb-3">
+						<label className="form-label" htmlFor="settings-dns-credentials-name">
+							<T id="settings.dns-credentials.name" />
+						</label>
+						<input
+							className="form-select"
+							placeholder="Enter a name"
+							onChange={(e) => setName(e.target.value)}
+							required
+						>
+						</input>
+					</div>
+				</div>
+
 				<div className="mb-3">
 					<label className="form-label" htmlFor="settings-dns-credentials-credentials">
 						<T id="settings.dns-credentials.credentials" />
@@ -126,6 +143,10 @@ export default function DnsCredentials() {
 					<table className="table table-vcenter">
 						<thead>
 							<tr>
+								
+								<th>
+									<T id="settings.dns-credentials.name" />
+								</th>
 								<th>
 									<T id="settings.dns-credentials.provider" />
 								</th>
@@ -139,6 +160,7 @@ export default function DnsCredentials() {
 								const provider = dnsProviders?.find((p) => p.id === cred.provider_id);
 								return (
 									<tr key={cred.id}>
+										<td>{cred.name}</td>
 										<td>{provider?.name || cred.provider_id}</td>
 										<td>
 											<Button

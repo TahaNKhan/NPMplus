@@ -743,6 +743,9 @@
 	"settings.dns-credentials.provider": {
 		"defaultMessage": "DNS Provider"
 	},
+	"settings.dns-credentials.name": {
+		"defaultMessage": "Name of Credentials"
+	},
 	"settings.dns-credentials.select-provider": {
 		"defaultMessage": "Select a provider..."
 	},
