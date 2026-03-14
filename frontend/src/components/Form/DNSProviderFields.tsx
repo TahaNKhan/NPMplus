@@ -28,6 +28,7 @@ export function DNSProviderFields({ showBoundaryBox = false }: Props) {
 	const { data: dnsProviders, isLoading } = useDnsProviders();
 	const { data: savedCredentials } = useDnsCredentials();
 	const [dnsProviderId, setDnsProviderId] = useState<string | null>(null);
+	const [savedCredentialOptions, setSavedCredentialOptions] = useState<SavedCredentialOption[] | null >(null);
 
 	const v: any = values || {};
 
@@ -35,6 +36,16 @@ export function DNSProviderFields({ showBoundaryBox = false }: Props) {
 		setFieldValue("meta.dnsProvider", newValue?.value);
 		setFieldValue("meta.dnsProviderCredentials", newValue?.credentials);
 		setDnsProviderId(newValue?.value);
+		// Filter saved credentials by the selected DNS provider
+		const savedCredentialOptions: SavedCredentialOption[] =
+			savedCredentials
+				?.filter((cred) => cred.provider_id === dnsProviderId)
+				.map((cred) => ({
+					value: cred.id,
+					label: `Saved Credential #${cred.id}`,
+					credentials: cred.credentials,
+				})) || [];
+		setSavedCredentialOptions(savedCredentialOptions);
 	};
 
 	const handleSavedCredentialChange = (newValue: any, _actionMeta: ActionMeta<SavedCredentialOption>) => {
@@ -50,17 +61,8 @@ export function DNSProviderFields({ showBoundaryBox = false }: Props) {
 			credentials: p.credentials,
 		})) || [];
 
-	// Filter saved credentials by the selected DNS provider
-	const savedCredentialOptions: SavedCredentialOption[] =
-		savedCredentials
-			?.filter((cred) => cred.provider_id === dnsProviderId)
-			.map((cred) => ({
-				value: cred.id,
-				label: `Saved Credential #${cred.id}`,
-				credentials: cred.credentials,
-			})) || [];
+	const showSavedCredentialsDropdown = dnsProviderId && (savedCredentialOptions?.length || 0) > 0;
 
-	const showSavedCredentialsDropdown = dnsProviderId && savedCredentialOptions.length > 0;
 
 	return (
 		<div className={showBoundaryBox ? styles.dnsChallengeWarning : undefined}>
@@ -108,7 +110,7 @@ export function DNSProviderFields({ showBoundaryBox = false }: Props) {
 								placeholder={intl.formatMessage({ id: "certificates.dns.saved-credentials.placeholder" })}
 								isSearchable={false}
 								onChange={handleSavedCredentialChange}
-								options={savedCredentialOptions}
+								options={savedCredentialOptions!}
 							/>
 							<small className="text-muted">
 								<T id="certificates.dns.saved-credentials-note" />
