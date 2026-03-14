@@ -15,8 +15,15 @@ export default function DnsCredentials() {
 	const [credentials, setCredentials] = useState("");
 	const [name, setName] = useState("");
 
+
+
 	const { data: dnsProviders, isLoading: providersLoading } = useDnsProviders();
 	const { data: savedCredentials, isLoading: credentialsLoading } = useDnsCredentials();
+
+	const updateProvider = (val: string) => {
+		setSelectedProvider(val);
+		setCredentials(dnsProviders?.find(s => s.id === val)?.credentials || "");
+	};
 
 	if (providersLoading || credentialsLoading) {
 		return <LoadingPage />;
@@ -73,7 +80,7 @@ export default function DnsCredentials() {
 							<select
 								className="form-select"
 								value={selectedProvider}
-								onChange={(e) => setSelectedProvider(e.target.value)}
+								onChange={(e) => updateProvider(e.target.value)}
 								required
 							>
 								<option value="">
