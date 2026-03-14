@@ -102,12 +102,11 @@ export default function DnsCredentials() {
 							<T id="settings.dns-credentials.name" />
 						</label>
 						<input
-							className="form-select"
-							placeholder="Enter a name"
+							className="form-control input-sm"
+							type="text"
 							onChange={(e) => setName(e.target.value)}
 							required
-						>
-						</input>
+						/>
 					</div>
 				</div>
 
@@ -150,7 +149,6 @@ export default function DnsCredentials() {
 					<table className="table table-vcenter">
 						<thead>
 							<tr>
-								
 								<th>
 									<T id="settings.dns-credentials.name" />
 								</th>
