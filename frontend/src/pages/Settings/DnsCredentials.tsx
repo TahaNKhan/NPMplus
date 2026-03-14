@@ -65,7 +65,7 @@ export default function DnsCredentials() {
 				<div className="row">
 					<div className="col-md-6">
 						<div className="mb-3">
-							<label className="form-label">
+							<label className="form-label" htmlFor="settings-dns-credentials-provider">
 								<T id="settings.dns-credentials.provider" />
 							</label>
 							<select
@@ -88,7 +88,7 @@ export default function DnsCredentials() {
 				</div>
 
 				<div className="mb-3">
-					<label className="form-label">
+					<label className="form-label" htmlFor="settings-dns-credentials-credentials">
 						<T id="settings.dns-credentials.credentials" />
 					</label>
 					<CodeEditor
