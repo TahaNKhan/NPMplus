@@ -34,18 +34,19 @@ export function DNSProviderFields({ showBoundaryBox = false }: Props) {
 
 	const handleChange = (newValue: any, _actionMeta: ActionMeta<DNSProviderOption>) => {
 		setFieldValue("meta.dnsProvider", newValue?.value);
-		setFieldValue("meta.dnsProviderCredentials", newValue?.credentials);
 		setDnsProviderId(newValue?.value);
 		// Filter saved credentials by the selected DNS provider
 		const savedCredentialOptions: SavedCredentialOption[] =
 			savedCredentials
-				?.filter((cred) => cred.provider_id === dnsProviderId)
+				?.filter((cred) => cred.providerId === newValue?.value)
 				.map((cred) => ({
 					value: cred.id,
-					label: `Saved Credential #${cred.id}`,
+					label: cred.name,
 					credentials: cred.credentials,
 				})) || [];
 		setSavedCredentialOptions(savedCredentialOptions);
+		const credValue = (savedCredentials?.length || 0) > 0 ? savedCredentials?.find(() => true)?.credentials : newValue?.credentials;
+		setFieldValue("meta.dnsProviderCredentials", credValue);
 	};
 
 	const handleSavedCredentialChange = (newValue: any, _actionMeta: ActionMeta<SavedCredentialOption>) => {

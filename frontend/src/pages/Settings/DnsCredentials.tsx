@@ -162,11 +162,12 @@ export default function DnsCredentials() {
 						</thead>
 						<tbody>
 							{savedCredentials.map((cred) => {
-								const provider = dnsProviders?.find((p) => p.id === cred.provider_id);
+								const provider = dnsProviders?.find((p) => p.id == cred.providerId);
+
 								return (
 									<tr key={cred.id}>
 										<td>{cred.name}</td>
-										<td>{provider?.name || cred.provider_id}</td>
+										<td>{provider?.name || cred.providerId}</td>
 										<td>
 											<Button
 												variant="action"
