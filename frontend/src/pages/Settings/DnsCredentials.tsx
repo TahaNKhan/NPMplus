@@ -162,7 +162,7 @@ export default function DnsCredentials() {
 						</thead>
 						<tbody>
 							{savedCredentials.map((cred) => {
-								const provider = dnsProviders?.find((p) => p.id == cred.providerId);
+								const provider = dnsProviders?.find((p) => p.id === cred.providerId);
 
 								return (
 									<tr key={cred.id}>
