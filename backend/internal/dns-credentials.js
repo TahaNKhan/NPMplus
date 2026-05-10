@@ -109,10 +109,7 @@ const internalDnsCredentials = {
 	 */
 	getAll: (access) => {
 		return access.can("settings:list").then((access_data) => {
-			const query = dnsCredentialsModel
-				.query()
-				.where("is_deleted", 0)
-				.orderBy("provider_id", "ASC");
+			const query = dnsCredentialsModel.query().where("is_deleted", 0).orderBy("provider_id", "ASC");
 
 			if (access_data.permission_visibility !== "all") {
 				query.andWhere("owner_user_id", access.token.getUserId(1));

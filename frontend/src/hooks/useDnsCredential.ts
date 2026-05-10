@@ -28,11 +28,10 @@ const useSetDnsCredential = () => {
 	return useMutation({
 		mutationFn: (values: DnsCredential) => {
 			if ("id" in values && values.id) {
-				const {id, ...item} = values;
+				const { id, ...item } = values;
 				return updateDnsCredential(id, item);
-			} else {
-				return createDnsCredential(values);
 			}
+			return createDnsCredential(values);
 		},
 		onMutate: (values: DnsCredential) => {
 			if (!values.id) {
